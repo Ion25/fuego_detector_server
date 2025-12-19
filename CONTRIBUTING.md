@@ -1,8 +1,8 @@
 # Guía de Contribución
 
-¡Gracias por tu interés en contribuir al Sistema IoT de Detección de Incendios! 🔥
+Gracias por tu interés en contribuir al Sistema IoT de Detección de Incendios.
 
-## 🚀 Cómo Contribuir
+## Cómo Contribuir
 
 ### Reportar Bugs
 
@@ -44,7 +44,7 @@ Para proponer nuevas características:
    ```
 7. **Abre un Pull Request** hacia la rama `main`
 
-## 📝 Guías de Estilo
+## Guías de Estilo
 
 ### Python
 
@@ -81,7 +81,7 @@ def calcular_umbral(temperatura: float, luz: float) -> str:
 - Usar constantes para pines y valores configurables
 - Validar lecturas de sensores
 
-## 🧪 Testing
+## Testing
 
 Antes de enviar un PR:
 
@@ -89,19 +89,19 @@ Antes de enviar un PR:
 2. Si es posible, añade tests automatizados
 3. Verifica que no introduces nuevos warnings o errores
 
-## 📚 Documentación
+## Documentación
 
 - Actualiza el README.md si añades nuevas features
 - Documenta nuevos endpoints en la API
 - Añade comentarios en código complejo
 
-## 🔄 Proceso de Revisión
+## Proceso de Revisión
 
 - Los mantenedores revisarán tu PR en 2-5 días hábiles
 - Se pueden solicitar cambios o mejoras
 - Una vez aprobado, tu contribución será mergeada
 
-## 💡 Áreas Prioritarias
+## Áreas Prioritarias
 
 Especialmente buscamos contribuciones en:
 
@@ -112,7 +112,7 @@ Especialmente buscamos contribuciones en:
 - **Hardware**: Soporte para más tipos de sensores
 - **Interfaz**: Mejoras del dashboard y UX
 
-## 🤔 ¿Tienes Dudas?
+## ¿Tienes Dudas?
 
 No dudes en:
 
@@ -120,7 +120,7 @@ No dudes en:
 - Contactar a los mantenedores
 - Revisar issues existentes
 
-## 🎓 Primera Contribución
+## Primera Contribución
 
 Si es tu primera vez contribuyendo a un proyecto open source:
 
@@ -128,4 +128,4 @@ Si es tu primera vez contribuyendo a un proyecto open source:
 - Lee la documentación completa
 - No tengas miedo de preguntar
 
-¡Toda contribución, por pequeña que sea, es valiosa! 🙌
+Toda contribución, por pequeña que sea, es valiosa.
