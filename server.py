@@ -66,6 +66,7 @@ for directory in [UPLOADS_DIR, IMAGES_DIR, AUDIO_DIR, LOGS_DIR, MODELS_DIR, STAT
     directory.mkdir(parents=True, exist_ok=True)
 
 app.mount("/uploads", StaticFiles(directory=str(UPLOADS_DIR)), name="uploads")
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 def procesar_datos_mqtt(datos: dict):
     try:
