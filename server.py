@@ -1,14 +1,6 @@
 """
 Servidor Backend - Sistema IoT de Detección de Incendios
 Universidad Nacional de San Agustín - Arequipa, Perú
-
-Flujo del sistema:
-1. Arduino envía datos de sensores continuamente
-2. Servidor evalúa umbrales internamente
-3. Si detecta peligro, solicita captura al smartphone
-4. Smartphone envía foto/audio
-5. Servidor analiza con IA
-6. Decisión final: fuego confirmado o falsa alarma
 """
 
 from fastapi import FastAPI, HTTPException, File, UploadFile, Form
@@ -25,29 +17,18 @@ import base64
 import os
 from pathlib import Path
 
-# Importar funciones de Telegram
 from telegram_config import enviar_mensaje_telegram, notificar_fuego_confirmado
-
-# Importar funciones de MQTT
 from mqtt_config import (
-    inicializar_mqtt, 
-    set_callback_sensores, 
+    inicializar_mqtt,
+    set_callback_sensores,
     set_callback_multimedia,
     solicitar_captura_mqtt,
     detener_mqtt
 )
-
-# Importar requests para comunicación con cámara Android (HTTP como respaldo)
 import requests
-
-
-# ============================================================================
-# CONFIGURACIÓN INICIAL
-# ============================================================================
 
 app = FastAPI(title="Fire Detection Server", version="1.0.0")
 
-# Habilitar CORS para peticiones desde Arduino y smartphone
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -55,8 +36,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Configuración de umbrales
 UMBRALES = {
     "temp_alerta": 45.0,
     "temp_peligro": 55.0,
@@ -64,24 +43,16 @@ UMBRALES = {
     "luz_peligro": 1000
 }
 
-# Configuración de cámara Android
-CAMARA_ANDROID_URL = "http://192.168.1.100:8080"  # Cambiar a la IP del teléfono
-DURACION_AUDIO = 5  # Segundos de grabación de audio
+CAMARA_ANDROID_URL = "http://192.168.1.100:8080"
+DURACION_AUDIO = 5
 
-# Estado global del sistema
 ESTADO_SISTEMA = {
-    "estado_actual": "Normal",  # Normal, Alerta, Peligro, Fuego_Confirmado
+    "estado_actual": "Normal",
     "requiere_captura": False,
     "ultima_lectura": None,
     "ultima_foto": None,
     "ultimo_analisis_ia": None
 }
-
-# ============================================================================
-# CONFIGURACIÓN DE DIRECTORIOS
-# ============================================================================
-
-# Crear estructura de carpetas
 BASE_DIR = Path(__file__).parent
 UPLOADS_DIR = BASE_DIR / "uploads"
 IMAGES_DIR = UPLOADS_DIR / "images"
@@ -91,37 +62,23 @@ MODELS_DIR = BASE_DIR / "models"
 STATIC_DIR = BASE_DIR / "static"
 TEMPLATES_DIR = BASE_DIR / "templates"
 
-# Crear directorios si no existen
 for directory in [UPLOADS_DIR, IMAGES_DIR, AUDIO_DIR, LOGS_DIR, MODELS_DIR, STATIC_DIR, TEMPLATES_DIR]:
     directory.mkdir(parents=True, exist_ok=True)
 
-# Montar directorio de uploads como archivos estáticos
 app.mount("/uploads", StaticFiles(directory=str(UPLOADS_DIR)), name="uploads")
 
-# ============================================================================
-# MQTT - Callback y Configuración
-# ============================================================================
-
 def procesar_datos_mqtt(datos: dict):
-    """
-    Callback que se llama cuando llegan datos del Arduino vía MQTT.
-    Procesa los datos exactamente igual que el endpoint HTTP.
-    """
     try:
         print(f"\n📡 Datos recibidos vía MQTT: Temp={datos.get('temperatura')}°C, Luz={datos.get('luz')} lux")
-        
-        # Crear objeto DatosSensores
+
         datos_sensores = DatosSensores(
             temperatura=datos.get('temperatura', 0.0),
             luz=datos.get('luz', 0.0),
             humedad=datos.get('humedad', 0.0),
             presion=datos.get('presion', 0.0)
         )
-        
-        # Evaluar estado según umbrales
+
         estado = evaluar_estado(datos_sensores.temperatura, datos_sensores.luz)
-        
-        # Actualizar estado global
         ESTADO_SISTEMA["ultima_lectura"] = {
             "temperatura": datos_sensores.temperatura,
             "luz": datos_sensores.luz,
@@ -132,11 +89,9 @@ def procesar_datos_mqtt(datos: dict):
         
         estado_anterior = ESTADO_SISTEMA["estado_actual"]
         ESTADO_SISTEMA["estado_actual"] = estado
-        
-        # Guardar en base de datos
+
         guardar_lectura_sensores(datos_sensores, estado)
-        
-        # Si cambió a estado Peligro, activar solicitud de captura
+
         if estado == "Peligro" and estado_anterior != "Peligro":
             ESTADO_SISTEMA["requiere_captura"] = True
             registrar_evento(
@@ -145,56 +100,45 @@ def procesar_datos_mqtt(datos: dict):
                 {"temperatura": datos_sensores.temperatura, "luz": datos_sensores.luz}
             )
             print(f"🚨 PELIGRO DETECTADO (MQTT) - Activando captura automática")
-            
-            # 🎥 Solicitar captura automática a la cámara Android vía MQTT
+
             try:
                 solicitar_captura_mqtt()
                 print("✓ Comando MQTT enviado a cámara Android")
             except Exception as e:
                 print(f"⚠️  Error al solicitar captura vía MQTT: {e}")
-        
+
         print(f"✓ Estado actual: {estado}")
-        
+
     except Exception as e:
         print(f"✗ Error procesando datos MQTT: {e}")
 
 def procesar_multimedia_mqtt(datos: dict):
-    """
-    Callback que se llama cuando llegan foto + audio desde la cámara por MQTT.
-    Procesa los datos exactamente igual que el endpoint HTTP /api/upload.
-    """
     try:
         print(f"\n📸 Multimedia recibida vía MQTT")
         print(f"   Dispositivo: {datos.get('dispositivo')}")
         print(f"   Timestamp: {datos.get('timestamp')}")
-        
-        # Guardar la foto
+
         imagen_base64 = datos.get('imagen')
         if not imagen_base64:
             print("✗ No se recibió imagen")
             return
-        
+
         timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
         imagen_filename = f"captura_{timestamp_str}.jpg"
         imagen_path = IMAGES_DIR / imagen_filename
-        
-        # Decodificar y guardar imagen
+
         try:
             imagen_bytes = base64.b64decode(imagen_base64)
             with open(imagen_path, 'wb') as f:
                 f.write(imagen_bytes)
             print(f"💾 Imagen guardada: {imagen_path}")
-            
-            # Guardar ruta relativa para uso público (serve static files desde /uploads)
+
             imagen_rel = f"uploads/images/{imagen_filename}"
-            # Actualizar estado global con ruta relativa
             ESTADO_SISTEMA["ultima_foto"] = imagen_rel
-            
+
         except Exception as e:
             print(f"✗ Error al guardar imagen: {e}")
             return
-        
-        # Guardar audio si existe
         audio_path = None
         audio_rel = None
         audio_base64 = datos.get('audio')
@@ -210,7 +154,6 @@ def procesar_multimedia_mqtt(datos: dict):
             except Exception as e:
                 print(f"⚠️  Error al guardar audio: {e}")
 
-        # Analizar con IA (usar ruta absoluta para el análisis)
         print(f"🤖 Analizando imagen con IA...")
         resultado_ia = predecir_fuego(str(imagen_path))
 
@@ -220,7 +163,6 @@ def procesar_multimedia_mqtt(datos: dict):
         print(f"   Fuego detectado: {'SÍ' if fuego_detectado else 'NO'}")
         print(f"   Confianza: {confianza:.2f}%")
 
-        # Guardar análisis en base de datos (usar rutas relativas para imágenes/audios)
         conn = sqlite3.connect('fire_detection.db')
         cursor = conn.cursor()
         cursor.execute('''
@@ -237,7 +179,6 @@ def procesar_multimedia_mqtt(datos: dict):
         conn.commit()
         conn.close()
 
-        # Actualizar estado del sistema si confirma fuego
         if fuego_detectado and confianza >= 75:
             ESTADO_SISTEMA["estado_actual"] = "Fuego_Confirmado"
             ESTADO_SISTEMA["ultimo_analisis_ia"] = resultado_ia
@@ -249,7 +190,6 @@ def procesar_multimedia_mqtt(datos: dict):
             )
             print(f"🔥 FUEGO CONFIRMADO por IA (MQTT)")
 
-            # Enviar notificación por Telegram solo cuando la IA confirma fuego
             try:
                 notificar_fuego_confirmado(confianza * 100, imagen_url=imagen_rel)
             except Exception as e:
@@ -262,60 +202,48 @@ def procesar_multimedia_mqtt(datos: dict):
                 resultado_ia
             )
             print(f"✓ Falsa alarma descartada (MQTT)")
-        
+
     except Exception as e:
         print(f"✗ Error procesando multimedia MQTT: {e}")
 
 @app.on_event("startup")
 async def startup_event():
-    """Inicializar MQTT cuando arranca el servidor"""
     print("\n" + "=" * 60)
     print("🚀 Iniciando Fire Detection Server")
     print("=" * 60)
-    
-    # Inicializar base de datos
+
     init_database()
     print("✓ Base de datos inicializada")
 
-    # Normalizar rutas antiguas en la base de datos (convertir absolutas a relativas)
     try:
         normalize_db_paths()
     except Exception as e:
         print(f"⚠️  Error ejecutando normalización de rutas en startup: {e}")
 
-    # Cargar modelo IA (intentará cargar TFLite/Keras si está disponible)
     try:
         cargar_modelo_ia()
     except Exception as e:
         print(f"⚠️ Error cargando modelo IA en startup: {e}")
 
-    # Inicializar MQTT
     print("\n🔌 Inicializando cliente MQTT...")
     mqtt_client = inicializar_mqtt()
 
     if mqtt_client:
-        # Configurar callback para procesar datos de sensores
         set_callback_sensores(procesar_datos_mqtt)
-        # Configurar callback para procesar multimedia
         set_callback_multimedia(procesar_multimedia_mqtt)
         print("✓ Cliente MQTT configurado")
         print(f"✓ Esperando datos del Arduino en topic: unsa/fire_detection/sensores")
     else:
         print("⚠️  No se pudo inicializar MQTT. El servidor seguirá funcionando con HTTP.")
-    
+
     print("\n✓ Servidor listo")
     print("=" * 60 + "\n")
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    """Detener MQTT cuando se cierra el servidor"""
     print("\n⏹️  Cerrando conexiones...")
     detener_mqtt()
     print("✓ Servidor detenido")
-
-# ============================================================================
-# MODELOS DE DATOS (Pydantic)
-# ============================================================================
 
 class DatosSensores(BaseModel):
     temperatura: float
@@ -324,8 +252,8 @@ class DatosSensores(BaseModel):
     presion: float
 
 class UploadMultimedia(BaseModel):
-    imagen: str  # Base64
-    audio: Optional[str] = None  # Base64 (opcional)
+    imagen: str
+    audio: Optional[str] = None
     timestamp: str
 
 class ConfigUmbrales(BaseModel):
@@ -334,16 +262,10 @@ class ConfigUmbrales(BaseModel):
     luz_alerta: Optional[float] = None
     luz_peligro: Optional[float] = None
 
-# ============================================================================
-# INICIALIZACIÓN DE BASE DE DATOS
-# ============================================================================
-
 def init_database():
-    """Crea las tablas necesarias en SQLite"""
     conn = sqlite3.connect('fire_detection.db')
     cursor = conn.cursor()
-    
-    # Tabla de lecturas de sensores
+
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS lecturas_sensores (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -355,8 +277,7 @@ def init_database():
             estado TEXT
         )
     ''')
-    
-    # Tabla de eventos (alertas, peligro, fuego confirmado)
+
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS eventos (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -366,8 +287,7 @@ def init_database():
             datos_json TEXT
         )
     ''')
-    
-    # Tabla de resultados de IA
+
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS analisis_ia (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -379,17 +299,12 @@ def init_database():
             datos_sensores TEXT
         )
     ''')
-    
+
     conn.commit()
     conn.close()
     print("✅ Base de datos inicializada correctamente")
 
 def normalize_db_paths():
-    """
-    Convierte entradas antiguas en la tabla analisis_ia que contienen rutas absolutas
-    (por ejemplo: "/home/arecles/.../uploads/images/xxx.jpg") a rutas relativas
-    que el servidor sirve en /uploads (por ejemplo: "uploads/images/xxx.jpg").
-    """
     try:
         conn = sqlite3.connect('fire_detection.db')
         cursor = conn.cursor()
@@ -400,7 +315,6 @@ def normalize_db_paths():
             new_ipath = None
             new_apath = None
             if ipath:
-                # Si comienza con / o contiene el base dir, normalizar
                 if ipath.startswith('/') or str(BASE_DIR) in ipath:
                     new_ipath = f"uploads/images/{os.path.basename(ipath)}"
             if apath:
@@ -420,44 +334,26 @@ def normalize_db_paths():
     except Exception as e:
         print(f"⚠️ Error normalizando rutas en DB: {e}")
 
-# ============================================================================
-# FUNCIONES AUXILIARES
-# ============================================================================
-
 def evaluar_estado(temperatura: float, luz: float) -> str:
-    """
-    Evalúa el estado del sistema según los umbrales
-    
-    Returns:
-        "Normal", "Alerta" o "Peligro"
-    """
-    # Estado PELIGRO (umbrales críticos)
     if temperatura >= UMBRALES["temp_peligro"] or luz >= UMBRALES["luz_peligro"]:
         return "Peligro"
-    
-    # Estado ALERTA (umbrales elevados)
+
     if temperatura >= UMBRALES["temp_alerta"] or luz >= UMBRALES["luz_alerta"]:
         return "Alerta"
-    
-    # Estado NORMAL
+
     return "Normal"
 
 def solicitar_captura_automatica():
-    """
-    Envía comando HTTP a la cámara Android para capturar foto + audio automáticamente.
-    La cámara capturará y subirá los datos al servidor sin intervención manual.
-    """
     try:
         print(f"\n📱 Solicitando captura automática a la cámara Android...")
         print(f"   URL: {CAMARA_ANDROID_URL}/capturar")
-        
-        # Enviar comando POST a la cámara
+
         response = requests.post(
             f"{CAMARA_ANDROID_URL}/capturar",
             json={"duracion_audio": DURACION_AUDIO},
-            timeout=2  # Timeout corto, la cámara procesará en background
+            timeout=2
         )
-        
+
         if response.status_code == 200:
             print(f"✓ Comando de captura enviado exitosamente")
             print(f"   La cámara capturará foto y audio automáticamente")
@@ -465,138 +361,99 @@ def solicitar_captura_automatica():
         else:
             print(f"⚠️  Error al enviar comando: {response.status_code}")
             return False
-            
+
     except requests.exceptions.Timeout:
         print(f"⚠️  Timeout al conectar con la cámara (comando enviado)")
-        # El timeout es normal, la cámara procesará en background
         return True
-        
+
     except requests.exceptions.ConnectionError:
         print(f"✗ No se pudo conectar con la cámara Android")
         print(f"   Verifica que esté ejecutando camera_server_android.py")
         print(f"   URL configurada: {CAMARA_ANDROID_URL}")
         return False
-        
+
     except Exception as e:
         print(f"✗ Error al solicitar captura: {e}")
         return False
 
 def guardar_lectura_sensores(datos: DatosSensores, estado: str):
-    """Guarda una lectura de sensores en la base de datos"""
     conn = sqlite3.connect('fire_detection.db')
     cursor = conn.cursor()
-    
+
     timestamp = datetime.now().isoformat()
     cursor.execute('''
         INSERT INTO lecturas_sensores (timestamp, temperatura, luz, humedad, presion, estado)
         VALUES (?, ?, ?, ?, ?, ?)
     ''', (timestamp, datos.temperatura, datos.luz, datos.humedad, datos.presion, estado))
-    
+
     conn.commit()
     conn.close()
 
 def registrar_evento(tipo: str, descripcion: str, datos_extra: dict = None):
-    """Registra un evento en la base de datos"""
     conn = sqlite3.connect('fire_detection.db')
     cursor = conn.cursor()
-    
+
     timestamp = datetime.now().isoformat()
     datos_json = json.dumps(datos_extra) if datos_extra else None
-    
+
     cursor.execute('''
         INSERT INTO eventos (timestamp, tipo_evento, descripcion, datos_json)
         VALUES (?, ?, ?, ?)
     ''', (timestamp, tipo, descripcion, datos_json))
-    
+
     conn.commit()
     conn.close()
-    
-    # También guardar en archivo de log
+
     log_file = LOGS_DIR / f"eventos_{datetime.now().strftime('%Y-%m-%d')}.log"
     with open(log_file, 'a') as f:
         f.write(f"[{timestamp}] {tipo}: {descripcion}\n")
 
 def guardar_imagen_base64(imagen_base64: str) -> str:
-    """
-    Guarda una imagen en formato base64 y retorna la ruta
-    
-    Returns:
-        Ruta relativa del archivo guardado
-    """
-    # Remover el prefijo data:image/...;base64, si existe
     if ',' in imagen_base64:
         imagen_base64 = imagen_base64.split(',')[1]
-    
-    # Decodificar base64
+
     imagen_bytes = base64.b64decode(imagen_base64)
-    
-    # Generar nombre de archivo con timestamp
+
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"captura_{timestamp}.jpg"
     filepath = IMAGES_DIR / filename
-    
-    # Guardar archivo
+
     with open(filepath, 'wb') as f:
         f.write(imagen_bytes)
-    
+
     return f"uploads/images/{filename}"
 
 def guardar_audio_base64(audio_base64: str) -> str:
-    """
-    Guarda un audio en formato base64 y retorna la ruta
-    
-    Returns:
-        Ruta relativa del archivo guardado
-    """
-    # Remover el prefijo si existe
     if ',' in audio_base64:
         audio_base64 = audio_base64.split(',')[1]
-    
-    # Decodificar base64
+
     audio_bytes = base64.b64decode(audio_base64)
-    
-    # Generar nombre de archivo con timestamp
+
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"audio_{timestamp}.wav"
     filepath = AUDIO_DIR / filename
-    
-    # Guardar archivo
+
     with open(filepath, 'wb') as f:
         f.write(audio_bytes)
-    
+
     return f"uploads/audio/{filename}"
 
-# ============================================================================
-# FUNCIONES DE IA (PLACEHOLDER)
-# ============================================================================
-
-# Variables globales para el modelo IA
 MODEL = None
-MODEL_TYPE = None  # 'keras' | 'tflite' | None
-MODEL_INPUT_SHAPE = (224, 224)  # Valor por defecto, se ajustará si el modelo indica otra cosa
+MODEL_TYPE = None
+MODEL_INPUT_SHAPE = (224, 224)
 
 
 def cargar_modelo_ia():
-    """
-    Intenta cargar un modelo IA en el siguiente orden:
-      1) models/fire_model.h5 (Keras/TensorFlow)
-      2) models/fire_model.tflite (TFLite)
-    Si no existe ningún modelo o las dependencias faltan, devuelve None y el sistema usará
-    un detector heurístico basado en color para pruebas.
-    """
     global MODEL, MODEL_TYPE, MODEL_INPUT_SHAPE
 
-    # Intentar cargar Keras/TensorFlow
     try:
         import tensorflow as tf
         keras_model_path = MODELS_DIR / 'fire_model.h5'
         if keras_model_path.exists():
             print(f"🔁 Cargando modelo Keras desde {keras_model_path}")
             MODEL = tf.keras.models.load_model(str(keras_model_path))
-            # Obtener shape de entrada si está disponible
             try:
                 input_shape = MODEL.input_shape
-                # input_shape puede ser (None, h, w, c)
                 if isinstance(input_shape, tuple) and len(input_shape) >= 3:
                     MODEL_INPUT_SHAPE = (input_shape[1], input_shape[2])
             except Exception:
@@ -607,14 +464,11 @@ def cargar_modelo_ia():
     except Exception as e:
         print(f"⚠️ No se pudo cargar TensorFlow/Keras o modelo .h5 no encontrado: {e}")
 
-    # Intentar cargar TFLite
     try:
         try:
-            # Primero intentar tflite_runtime (más ligero)
             import tflite_runtime.interpreter as tflite
             Interpreter = tflite.Interpreter
         except Exception:
-            # Fallback a TF Lite incluido en tensorflow
             import tensorflow as tf
             Interpreter = tf.lite.Interpreter
 
@@ -625,7 +479,6 @@ def cargar_modelo_ia():
             interpreter.allocate_tensors()
             MODEL = interpreter
             MODEL_TYPE = 'tflite'
-            # Intentar obtener shape de entrada
             try:
                 input_details = interpreter.get_input_details()
                 shape = input_details[0]['shape']
@@ -638,35 +491,21 @@ def cargar_modelo_ia():
     except Exception as e:
         print(f"⚠️ No se pudo cargar TFLite: {e}")
 
-    # Si llegamos aquí, no se cargó ningún modelo
     MODEL = None
     MODEL_TYPE = None
     print("⚠️ No se encontró ningún modelo IA. Usando heurística de color como fallback.")
     return None
 
-
 def predecir_fuego(imagen_path: str) -> dict:
-    """
-    Analiza una imagen para detectar fuego.
-
-    Args:
-        imagen_path: Ruta absoluta o relativa a la imagen (puede ser 'uploads/images/xxx.jpg')
-
-    Returns:
-        dict con 'fuego_detectado' (bool) y 'confianza' (float entre 0 y 1)
-    """
     global MODEL, MODEL_TYPE, MODEL_INPUT_SHAPE
 
-    # Resolver ruta de archivo: si es relativa dentro de uploads, convertir a path absoluto
     try:
         img_path = imagen_path
         if not os.path.isabs(img_path):
-            # Si se proporcionó la ruta relativa guardada en DB (uploads/...), unimos con BASE_DIR
             candidate = BASE_DIR / img_path
             if candidate.exists():
                 img_path = str(candidate)
             else:
-                # Intentar con solo basename en uploads/images
                 candidate2 = IMAGES_DIR / os.path.basename(img_path)
                 if candidate2.exists():
                     img_path = str(candidate2)
@@ -676,9 +515,7 @@ def predecir_fuego(imagen_path: str) -> dict:
         print(f"⚠️ predecir_fuego: error resolviendo ruta de imagen: {e}")
         return {"fuego_detectado": False, "confianza": 0.0}
 
-    # Intentar inferencia con modelo cargado
     try:
-        # Importar PIL y numpy solo cuando sea necesario
         from PIL import Image
         import numpy as np
 
