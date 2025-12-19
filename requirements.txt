@@ -1,0 +1,30 @@
+# Dependencias del Servidor Backend - Fire Detection System
+# Python 3.8+
+
+# Framework web
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+python-multipart==0.0.6
+
+# Validación de datos
+pydantic==2.5.3
+
+# Base de datos
+# (SQLite viene incluido en Python)
+
+# Procesamiento de imágenes
+Pillow==10.2.0
+
+# Utilidades
+python-dotenv==1.0.0
+
+# Para IA (Placeholder - descomentar cuando se implemente)
+# tensorflow==2.15.0
+# torch==2.1.2
+# torchvision==0.16.2
+# numpy==1.24.3
+
+# Para notificaciones (Opcional - cuando se implemente)
+# requests==2.31.0
+# python-telegram-bot==20.7
+# twilio==8.11.0

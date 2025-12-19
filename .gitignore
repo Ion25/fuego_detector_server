@@ -1,0 +1,85 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+build/
+dist/
+*.egg-info/
+
+# Base de datos
+*.db
+*.sqlite
+*.sqlite3
+
+# Archivos subidos
+uploads/
+!uploads/.gitkeep
+
+# Logs
+logs/
+!logs/.gitkeep
+
+# Modelos de IA
+models/*.h5
+models/*.pt
+models/*.pth
+models/*.tflite
+!models/.gitkeep
+!models/script-IA.py
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Configuración local
+.env
+config.local.json
+telegram_config.py
+
+# Archivos de respaldo
+*.backup
+*.backup2
+server_body.txt
+
+# Archivos de guía/instalación no esenciales
+GUIA_INSTALACION_ANDROID.md
+INSTALACION_TERMUX_CORRECTA.md
+INSTRUCCIONES_GOOGLE_COLAB.md
+README_CAMARA_ANDROID.md
+README_MQTT.md
+README_MQTT_COMPLETO.md
+README_TELEGRAM.md
+RESUMEN_IMPLEMENTACION.md
+EJEMPLOS_API.md
+ESTADO_SISTEMA.md
+
+# Scripts de testing no esenciales
+test_*.py
+fix_server.py
+server_fixed.py
+verificar_*.py
+simulate_arduino.py
+
+# Scripts de setup específicos
+setup_termux.sh
+test_termux_commands.sh
+
+# LaTeX auxiliares
+*.aux
+*.log
+*.out
+*.toc
+*.fdb_latexmk
+*.fls
+*.synctex.gz

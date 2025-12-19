@@ -1,0 +1,26 @@
+"""
+Configuración del Bot de Telegram para notificaciones
+
+IMPORTANTE: Este es un archivo de EJEMPLO. 
+Copia este archivo como telegram_config.py y configura tus credenciales reales.
+
+Instrucciones:
+1. Abre Telegram y busca @BotFather
+2. Envía /newbot y sigue las instrucciones
+3. Copia el token que te proporciona
+4. Para obtener tu CHAT_ID, envía un mensaje a tu bot y visita:
+   https://api.telegram.org/bot<YourBOTToken>/getUpdates
+   O usa el bot @userinfobot
+"""
+
+# Token del bot de Telegram (proporcionado por @BotFather)
+BOT_TOKEN = "123456789:ABCdefGHIjklMNOpqrsTUVwxyz"
+
+# ID del chat donde se enviarán las notificaciones
+# Puede ser tu ID personal o el ID de un grupo
+CHAT_ID = "123456789"
+
+# Configuración opcional
+ENABLE_NOTIFICATIONS = True  # Activar/desactivar notificaciones
+SEND_PHOTOS = True           # Enviar fotos en las notificaciones
+SEND_AUDIO = False           # Enviar audio en las notificaciones (si está disponible)
